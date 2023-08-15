@@ -5,6 +5,7 @@ import java.util.*;
 
 public class Main {
     public static final Map<Integer, Integer> sizeToFreq = new HashMap<>();
+    private static final Object monitor = new Object();
 
     public static void main(String[] args) throws InterruptedException {
         Thread[] threads = new Thread[1000];
@@ -12,16 +13,36 @@ public class Main {
             threads[i] = new Thread(() -> {
                 String route = generateRoute("RLRFR", 100);
                 int freq = getCount(route);
-                synchronized (sizeToFreq) {
+                synchronized (monitor) {
                     sizeToFreq.put(freq, sizeToFreq.getOrDefault(freq, 0) + 1);
+                    monitor.notify();
                 }
             });
             threads[i].start();
         }
+
+        Thread printResultThread = new Thread(() -> {
+            int maxFreq = 0;
+            while (!Thread.interrupted()) {
+                synchronized (monitor) {
+                    try {
+                        monitor.wait();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                for (int freq : sizeToFreq.keySet()) {
+                    if (freq > maxFreq) maxFreq = freq;
+                }
+                System.out.println("Текущий лидер частот: " + maxFreq + " (встретилось " + sizeToFreq.get(maxFreq) + " раз)");
+            }
+        });
+        printResultThread.start();
+
         for (Thread thread : threads) {
             thread.join();
         }
-        printResult();
+        printResultThread.interrupt();
     }
 
     public static int getCount(String route) {
@@ -30,21 +51,6 @@ public class Main {
             if (ch == 'R') count++;
         }
         return count;
-    }
-
-    public static void printResult() {
-        int maxFreq = 0;
-        for (int freq : sizeToFreq.keySet()) {
-            maxFreq = Math.max(maxFreq, freq);
-        }
-
-        System.out.println("Самое частое количество повторений " + maxFreq + " (встретилось " + sizeToFreq.get(maxFreq) + " раз)");
-        System.out.println("Другие размеры:");
-        for (Map.Entry<Integer, Integer> entry : sizeToFreq.entrySet()) {
-            if (entry.getKey() != maxFreq) {
-                System.out.println("- " + entry.getKey() + " (" + entry.getValue() + " раз)");
-            }
-        }
     }
 
     public static String generateRoute(String letters, int length) {
